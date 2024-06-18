@@ -3,8 +3,12 @@ const lib2048 = @import("./lib2048.zig");
 const ncurses = @cImport({
     @cInclude("ncurses.h");
 });
+const locale = @cImport({
+    @cInclude("locale.h");
+});
 
 pub fn main() !void {
+    _ = locale.setlocale(locale.LC_ALL, "");
     _ = ncurses.initscr();
     defer _ = ncurses.endwin();
     _ = ncurses.cbreak();
