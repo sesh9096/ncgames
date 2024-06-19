@@ -17,11 +17,17 @@ const MoveError = error{
 
 pub fn play() void {
     _ = ncurses.clear();
+    var prng = std.rand.DefaultPrng.init(blk: {
+        var seed: u64 = undefined;
+        std.posix.getrandom(std.mem.asBytes(&seed)) catch unreachable;
+        break :blk seed;
+    });
+    var rand = prng.random();
     const cell_width = 10;
     const cell_height = 5;
     var game: [4][4]u8 = .{.{0} ** 4} ** 4;
-    for (0..2) |_| {
-        addRandomDigit(&game);
+    for (0..2) |i| {
+        addRandomDigit(&game, &rand, @intCast(16 - i));
     }
     // for history, don't need this yet
     // const L= std.SinglyLinkedList([4][4]u8);
@@ -44,17 +50,17 @@ pub fn play() void {
         }
         _ = ncurses.refresh();
         _ = ncurses.move(0, 0);
-        game = switch (ncurses.getch()) {
-            'h' => turn(game, Move.left) catch game,
-            'j' => turn(game, Move.down) catch game,
-            'k' => turn(game, Move.up) catch game,
-            'l' => turn(game, Move.right) catch game,
+        const ch = ncurses.getch();
+        game = switch (ch) {
+            'h' => turn(game, Move.left, &rand),
+            'j' => turn(game, Move.down, &rand),
+            'k' => turn(game, Move.up, &rand),
+            'l' => turn(game, Move.right, &rand),
             'q' => return,
-            else => game,
-        };
+            else => MoveError.InvalidMove,
+        } catch game;
     }
-    _ = ncurses.move(0, 0);
-    _ = ncurses.printw("You have lost \n");
+    _ = ncurses.mvprintw(0, 0, "You have lost \n");
     _ = ncurses.getch();
 
     // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
@@ -192,19 +198,14 @@ fn move(grid_before_move: [4][4]u8, direction: Move) MoveError![4][4]u8 {
     return grid_after_move;
 }
 
-pub fn addRandomDigit(grid: *[4][4]u8) void {
-    const zeros = countZeros(grid.*);
-    var prng = std.rand.DefaultPrng.init(blk: {
-        var seed: u64 = undefined;
-        std.posix.getrandom(std.mem.asBytes(&seed)) catch unreachable;
-        break :blk seed;
-    });
-    var i = prng.random().uintLessThan(u8, zeros);
+pub fn addRandomDigit(grid: *[4][4]u8, rand: *std.Random, zeros: u8) void {
+    // const zeros = countZeros(grid.*);
+    var i = rand.uintLessThan(u8, zeros);
     for (grid) |*row| {
         for (row) |*cell| {
             if (cell.* == 0) {
                 if (i == 0) {
-                    cell.* = 1;
+                    cell.* = if (rand.uintLessThan(u8, 10) == 0) 2 else 1;
                     return;
                 }
                 i -= 1;
@@ -225,9 +226,9 @@ pub fn countZeros(grid: [4][4]u8) u8 {
     return zeros;
 }
 
-pub fn turn(grid: [4][4]u8, direction: Move) MoveError![4][4]u8 {
+pub fn turn(grid: [4][4]u8, direction: Move, rand: *std.Random) MoveError![4][4]u8 {
     var new_grid = try move(grid, direction);
-    addRandomDigit(&new_grid);
+    addRandomDigit(&new_grid, rand, countZeros(new_grid));
     return new_grid;
 }
 
@@ -322,8 +323,7 @@ test "zero" {
         [_]u8{ 0, 0, 0, 0 },
     };
     const after = move(game, Move.left);
-    try testing.expect(gridEq(game, after));
-    try testing.expectEqual(16, countZeros(game));
+    try testing.expectEqual(after, MoveError.InvalidMove);
 }
 test "simple left" {
     const before = [4][4]u8{
@@ -338,7 +338,7 @@ test "simple left" {
         [_]u8{ 0, 0, 0, 0 },
         [_]u8{ 2, 0, 0, 0 },
     };
-    const after = move(before, Move.left);
+    const after = try move(before, Move.left);
     for (after, expected) |after_arr, expected_arr| {
         try testing.expect(std.mem.eql(u8, &after_arr, &expected_arr));
     }
@@ -358,7 +358,7 @@ test "more complicated left" {
         [_]u8{ 1, 2, 1, 2 },
         [_]u8{ 2, 3, 4, 0 },
     };
-    const after = move(before, Move.left);
+    const after = try move(before, Move.left);
     // printGrid(after);
     try testing.expect(gridEq(expected, after));
     // try testing.expect(std.mem.eql([4][4]u8, after, expected));
@@ -377,7 +377,7 @@ test "simple right" {
         [_]u8{ 0, 0, 0, 0 },
         [_]u8{ 0, 0, 0, 2 },
     };
-    const after = move(before, Move.right);
+    const after = try move(before, Move.right);
     for (after, expected) |after_arr, expected_arr| {
         try testing.expect(std.mem.eql(u8, &after_arr, &expected_arr));
     }
@@ -399,7 +399,7 @@ test "not so simple up" {
         [_]u8{ 0, 0, 3, 0 },
         [_]u8{ 0, 0, 4, 0 },
     };
-    const after = move(before, Move.up);
+    const after = try move(before, Move.up);
     // printGrid(after);
     for (after, expected) |after_arr, expected_arr| {
         try testing.expect(std.mem.eql(u8, &after_arr, &expected_arr));
@@ -419,10 +419,21 @@ test "down" {
         [_]u8{ 0, 1, 3, 0 },
         [_]u8{ 1, 2, 4, 0 },
     };
-    const after = move(before, Move.down);
+    const after = try move(before, Move.down);
     // printGrid(after);
     for (after, expected) |after_arr, expected_arr| {
         try testing.expect(std.mem.eql(u8, &after_arr, &expected_arr));
     }
     // try testing.expect(std.mem.eql([4][4]u8, after, expected));
+}
+
+test "rand != rand" {
+    // sanity check
+    var prng = std.rand.DefaultPrng.init(blk: {
+        var seed: u64 = undefined;
+        std.posix.getrandom(std.mem.asBytes(&seed)) catch unreachable;
+        break :blk seed;
+    });
+    var rand = prng.random();
+    try testing.expect(rand.int(u64) != rand.int(u64));
 }
