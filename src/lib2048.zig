@@ -4,17 +4,25 @@ const ncurses = @cImport({
     @cInclude("ncurses.h");
 });
 
-pub const Move = enum {
+const Move = enum {
     left,
     down,
     up,
     right,
 };
 
+const MoveError = error{
+    InvalidMove,
+};
+
 pub fn play() void {
+    _ = ncurses.clear();
     const cell_width = 10;
     const cell_height = 5;
     var game: [4][4]u8 = .{.{0} ** 4} ** 4;
+    for (0..2) |_| {
+        addRandomDigit(&game);
+    }
     // for history, don't need this yet
     // const L= std.SinglyLinkedList([4][4]u8);
     // var list = L{};
@@ -37,10 +45,10 @@ pub fn play() void {
         _ = ncurses.refresh();
         _ = ncurses.move(0, 0);
         game = switch (ncurses.getch()) {
-            'h' => turn(game, Move.left),
-            'j' => turn(game, Move.down),
-            'k' => turn(game, Move.up),
-            'l' => turn(game, Move.right),
+            'h' => turn(game, Move.left) catch game,
+            'j' => turn(game, Move.down) catch game,
+            'k' => turn(game, Move.up) catch game,
+            'l' => turn(game, Move.right) catch game,
             'q' => return,
             else => game,
         };
@@ -74,7 +82,7 @@ pub fn play() void {
 
 }
 
-pub fn move(grid_before_move: [4][4]u8, direction: Move) [4][4]u8 {
+fn move(grid_before_move: [4][4]u8, direction: Move) MoveError![4][4]u8 {
     var grid_after_move: [4][4]u8 = .{.{0} ** 4} ** 4;
     switch (direction) {
         Move.left => {
@@ -180,6 +188,7 @@ pub fn move(grid_before_move: [4][4]u8, direction: Move) [4][4]u8 {
             }
         },
     }
+    if (gridEq(grid_before_move, grid_after_move)) return MoveError.InvalidMove;
     return grid_after_move;
 }
 
@@ -216,8 +225,8 @@ pub fn countZeros(grid: [4][4]u8) u8 {
     return zeros;
 }
 
-pub fn turn(grid: [4][4]u8, direction: Move) [4][4]u8 {
-    var new_grid = move(grid, direction);
+pub fn turn(grid: [4][4]u8, direction: Move) MoveError![4][4]u8 {
+    var new_grid = try move(grid, direction);
     addRandomDigit(&new_grid);
     return new_grid;
 }
