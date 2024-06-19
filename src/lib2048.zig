@@ -1,5 +1,8 @@
 const std = @import("std");
 const testing = std.testing;
+const ncurses = @cImport({
+    @cInclude("ncurses.h");
+});
 
 pub const Move = enum {
     left,
@@ -7,6 +10,69 @@ pub const Move = enum {
     up,
     right,
 };
+
+pub fn play() void {
+    const cell_width = 10;
+    const cell_height = 5;
+    var game: [4][4]u8 = .{.{0} ** 4} ** 4;
+    // for history, don't need this yet
+    // const L= std.SinglyLinkedList([4][4]u8);
+    // var list = L{};
+    // list.prepend(&.{ .data = initial_game });
+    while (!gameOver(game)) {
+        for (game, 0..) |row, i| {
+            for (row, 0..) |cell, j| {
+                // _ = ncurses.move(@intCast(i * cell_height), @intCast(j * cell_width));
+                const printed_value = @as(u64, 1) << @as(u6, @intCast(cell));
+                // _ = ncurses.printw("%u ", @as(u64, 1) << @as(u6, @intCast(cell)));
+                if (printed_value != 1) {
+                    printCell(@intCast(i * cell_height), @intCast(j * cell_width), printed_value);
+                } else {
+                    printEmptyCell(@intCast(i * cell_height), @intCast(j * cell_width));
+                }
+                // _ = ncurses.printw("%u ", cell);
+            }
+            _ = ncurses.printw("\n");
+        }
+        _ = ncurses.refresh();
+        _ = ncurses.move(0, 0);
+        game = switch (ncurses.getch()) {
+            'h' => turn(game, Move.left),
+            'j' => turn(game, Move.down),
+            'k' => turn(game, Move.up),
+            'l' => turn(game, Move.right),
+            'q' => return,
+            else => game,
+        };
+    }
+    _ = ncurses.move(0, 0);
+    _ = ncurses.printw("You have lost \n");
+    _ = ncurses.getch();
+
+    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
+    // std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+    // stdout is for the actual output of your application, for example if you
+    // are implementing gzip, then only the compressed bytes should be sent to
+    // stdout, not any debugging messages.
+    // const stdout_file = std.io.getStdOut().writer();
+    // var bw = std.io.bufferedWriter(stdout_file);
+    // const stdout = bw.writer();
+
+    // try stdout.print("Run `zig build test` to run the tests.\n", .{});
+
+    // try bw.flush(); // don't forget to flush!
+    // ╭────────╮
+    // │        │
+    // │  2048  │
+    // │        │
+    // ╰────────╯
+    // ┌────┬────┐
+    // │    │    │
+    // ├────┼────┤
+    // │    │    │
+    // └────┴────┘
+
+}
 
 pub fn move(grid_before_move: [4][4]u8, direction: Move) [4][4]u8 {
     var grid_after_move: [4][4]u8 = .{.{0} ** 4} ** 4;
@@ -207,6 +273,20 @@ test "game over" {
     try testing.expect(!gameOver(game1));
     try testing.expect(!gameOver(game2));
     try testing.expect(gameOver(game3));
+}
+
+pub fn printCell(y: c_int, x: c_int, n: u64) void {
+    _ = ncurses.mvprintw(y + 0, x, "╭────────╮");
+    _ = ncurses.mvprintw(y + 1, x, "│        │");
+    _ = ncurses.mvprintw(y + 2, x, "│  %4u  │", n);
+    _ = ncurses.mvprintw(y + 3, x, "│        │");
+    _ = ncurses.mvprintw(y + 4, x, "╰────────╯");
+}
+
+pub fn printEmptyCell(y: c_int, x: c_int) void {
+    inline for (0..5) |i| {
+        _ = ncurses.mvaddstr(y + @as(c_int, i), x, "          ");
+    }
 }
 
 fn printGrid(grid: [4][4]u8) void {

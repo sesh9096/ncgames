@@ -35,6 +35,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    exe.linkSystemLibrary("menu");
     exe.linkSystemLibrary("ncursesw");
     exe.linkLibC();
 

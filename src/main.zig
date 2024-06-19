@@ -3,72 +3,73 @@ const lib2048 = @import("./lib2048.zig");
 const ncurses = @cImport({
     @cInclude("ncurses.h");
 });
+const menu = @cImport({
+    @cInclude("menu.h");
+});
 const locale = @cImport({
     @cInclude("locale.h");
 });
 
 pub fn main() !void {
     _ = locale.setlocale(locale.LC_ALL, "");
-    _ = ncurses.initscr();
-    defer _ = ncurses.endwin();
-    _ = ncurses.cbreak();
-    _ = ncurses.curs_set(0);
-    _ = ncurses.noecho();
-    // _ = ncurses.printw("All your %s are belong to us.\n", "codebase");
-
-    var game: [4][4]u8 = .{.{0} ** 4} ** 4;
-    // for history, don't need this yet
-    // const L= std.SinglyLinkedList([4][4]u8);
-    // var list = L{};
-    // list.prepend(&.{ .data = initial_game });
-    while (!lib2048.gameOver(game)) {
-        for (game) |row| {
-            for (row) |cell| {
-                const printed_value = @as(u64, 1) << @as(u6, @intCast(cell));
-                // _ = ncurses.printw("%u ", @as(u64, 1) << @as(u6, @intCast(cell)));
-                _ = ncurses.printw("%u ", printed_value);
-                // _ = ncurses.printw("%u ", cell);
-            }
-            _ = ncurses.printw("\n");
-        }
-        _ = ncurses.refresh();
-        _ = ncurses.move(0, 0);
-        game = switch (ncurses.getch()) {
-            'h' => lib2048.turn(game, lib2048.Move.left),
-            'j' => lib2048.turn(game, lib2048.Move.down),
-            'k' => lib2048.turn(game, lib2048.Move.up),
-            'l' => lib2048.turn(game, lib2048.Move.right),
-            'q' => return,
-            else => game,
-        };
+    _ = ncurses.initscr(); // initialize main screen
+    defer _ = ncurses.endwin(); // free main screen
+    _ = ncurses.cbreak(); // intercept all keys immediately except for C-c and C-z, also see raw()
+    _ = ncurses.curs_set(0); // hide cursor
+    _ = ncurses.noecho(); // disable echoing input
+    _ = ncurses.keypad(ncurses.stdscr, true); // enable arrow keys
+    const ItemData = struct {
+        name: [*:0]const u8,
+        description: [*:0]const u8,
+        play: *const fn () void,
+    };
+    const menu_options = [_]ItemData{
+        ItemData{ .name = "2048", .description = "a 2048 game", .play = lib2048.play },
+        ItemData{ .name = "suduko", .description = "regular suduko", .play = lib2048.play },
+    };
+    var menu_items: [menu_options.len + 1]?*menu.ITEM = undefined;
+    for (menu_options, 0..) |option, i| {
+        menu_items[i] = menu.new_item(option.name, option.description);
     }
-    _ = ncurses.move(0, 0);
-    _ = ncurses.printw("You have lost \n");
-    _ = ncurses.getch();
+    menu_items[2] = null;
+    defer for (menu_items[0..menu_options.len]) |menu_item| {
+        _ = menu.free_item(menu_item);
+    };
+    // for (0..3) |i| {
+    //     std.debug.print("item {}, {*}\n", .{ i, menu_items[i] });
+    // }
 
-    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-    // std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
-    // stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    // const stdout_file = std.io.getStdOut().writer();
-    // var bw = std.io.bufferedWriter(stdout_file);
-    // const stdout = bw.writer();
+    const ptr = &menu_items[0];
+    const game_menu = menu.new_menu(ptr);
+    defer _ = menu.free_menu(game_menu);
 
-    // try stdout.print("Run `zig build test` to run the tests.\n", .{});
+    _ = menu.post_menu(game_menu);
+    defer _ = menu.unpost_menu(game_menu);
+    _ = ncurses.refresh();
 
-    // try bw.flush(); // don't forget to flush!
-    // ╭────────╮
-    // │        │
-    // │  2048  │
-    // │        │
-    // ╰────────╯
-    // ┌────┬────┐
-    // │    │    │
-    // ├────┼────┤
-    // │    │    │
-    // └────┴────┘
-
+    menu_loop: while (true) {
+        switch (ncurses.getch()) {
+            'k', ncurses.KEY_UP => {
+                _ = menu.menu_driver(game_menu, menu.REQ_UP_ITEM);
+            },
+            'j', ncurses.KEY_DOWN => {
+                _ = menu.menu_driver(game_menu, menu.REQ_DOWN_ITEM);
+            },
+            10 => { // enter key
+                const ret = menu.item_index(menu.current_item(game_menu));
+                _ = ncurses.mvprintw(20, 20, "function called!");
+                const index: usize = if (ret >= 0) @intCast(ret) else continue :menu_loop;
+                menu_options[index].play();
+                break :menu_loop;
+            },
+            'q' => {
+                break :menu_loop;
+            },
+            else => {
+                continue;
+            },
+        }
+    }
 }
 
 test "simple test" {
