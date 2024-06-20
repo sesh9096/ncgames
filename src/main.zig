@@ -1,5 +1,6 @@
 const std = @import("std");
 const lib2048 = @import("./lib2048.zig");
+const sudoku = @import("./sudoku.zig");
 const ncurses = @cImport({
     @cInclude("ncurses.h");
 });
@@ -25,7 +26,7 @@ pub fn main() !void {
     };
     const menu_options = [_]ItemData{
         ItemData{ .name = "2048", .description = "a 2048 game", .play = lib2048.play },
-        ItemData{ .name = "suduko", .description = "regular suduko", .play = lib2048.play },
+        ItemData{ .name = "suduko", .description = "regular suduko", .play = sudoku.play },
     };
     var menu_items: [menu_options.len + 1]?*menu.ITEM = undefined;
     for (menu_options, 0..) |option, i| {
@@ -57,7 +58,6 @@ pub fn main() !void {
             },
             10 => { // enter key
                 const ret = menu.item_index(menu.current_item(game_menu));
-                _ = ncurses.mvprintw(20, 20, "function called!");
                 const index: usize = if (ret >= 0) @intCast(ret) else continue :menu_loop;
                 menu_options[index].play();
                 break :menu_loop;
