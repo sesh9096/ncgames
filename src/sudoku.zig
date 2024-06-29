@@ -17,11 +17,23 @@ const Cell = union(enum) {
     not_clue: u9,
 };
 
+const ImportGame = [9][9]u4;
+
 const GameState = struct {
     grid: [9][9]Cell,
     row: u4,
     col: u4,
 };
+
+fn iGameToGameState(game: ImportGame) GameState {
+    var state = GameState{ .col = 0, .row = 0, .grid = undefined };
+    for (game, &state.grid) |game_row, *state_row| {
+        for (game_row, state_row) |num, *cell| {
+            cell = if (num == 0) .{ .not_clue = 0 } else .{ .clue = num };
+        }
+    }
+    return state;
+}
 
 fn mvwDrawFullCharacter(window: *ncurses.WINDOW, y: u32, x: u32, num: u4) void {
     const lines: [3]*const [5:0]u8 = switch (num) {
@@ -86,7 +98,10 @@ pub fn play() void {
     //     break :blk seed;
     // });
     // var rand = prng.random();
-    const main_window = ncurses.newwin(ncurses.LINES, ncurses.COLS, 0, 0).?;
+    var main_window: *ncurses.WINDOW = undefined;
+    if (ncurses.LINES > 37 and ncurses.COLS > 74) {
+        main_window = ncurses.newwin(37, 74, 0, 0).?;
+    }
     defer if (ncurses.delwin(main_window) == ncurses.ERR) std.debug.print("could not delete window", .{});
     printFullGrid(main_window) catch return;
     if (ncurses.wrefresh(main_window) == ncurses.ERR) unreachable;
@@ -125,8 +140,8 @@ pub fn play() void {
             error.InvalidMove => game,
         };
         // std.debug.print("{}", .{game.grid[game.row][game.col].not_clue});
-        reverseCell(main_window, 1 + 4 * @as(u32, game.row), 1 + 8 * @as(u32, game.col), 3, 7);
         mvwDrawCell(main_window, game, game.row, game.col);
+        reverseCell(main_window, 1 + 4 * @as(u32, game.row), 1 + 8 * @as(u32, game.col), 3, 7);
         if (ncurses.wrefresh(main_window) == ncurses.ERR) unreachable;
         unreverseCell(main_window, 1 + 4 * @as(u32, game.row), 1 + 8 * @as(u32, game.col), 3, 7);
     }
@@ -186,16 +201,13 @@ fn mvwDrawCell(window: *ncurses.WINDOW, game: GameState, row: u4, col: u4) void 
                 mvwDrawFullCharacter(window, 1 + 4 * @as(u32, row), 2 + 8 * @as(u32, col), indexOfGretestBit(val));
             } else {
                 const zeroToThree = [_]u4{ 0, 1, 2 };
-                const oneToTwo = [_]u4{ 1, 2 };
                 for (zeroToThree) |i| {
-                    const n1 = i * 3;
-                    const ch1 = numToChar(if (@as(u9, 1) << n1 & val == 0) 0 else n1 + 1);
-                    _ = ncurses.mvwaddch(window, 1 + 4 * @as(i32, row) + i, 2 + 8 * @as(i32, col), ch1);
-                    for (oneToTwo) |j| {
+                    _ = ncurses.mvwaddch(window, 1 + 4 * @as(i32, row) + i, 1 + 8 * @as(i32, col), ' ');
+                    for (zeroToThree) |j| {
                         const n = i * 3 + j;
                         const ch = numToChar(if (@as(u9, 1) << n & val == 0) 0 else n + 1);
-                        _ = ncurses.waddch(window, ' ');
                         _ = ncurses.waddch(window, ch);
+                        _ = ncurses.waddch(window, ' ');
                     }
                 }
                 // _ = ncurses.mvwprintf(window, 1 + 4 * @as(i32, row), 1 + 8 * @as(i32, col), " %i %i %i ", 1, 2, 3);
