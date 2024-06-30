@@ -29,24 +29,24 @@ fn iGameToGameState(game: ImportGame) GameState {
     var state = GameState{ .col = 0, .row = 0, .grid = undefined };
     for (game, &state.grid) |game_row, *state_row| {
         for (game_row, state_row) |num, *cell| {
-            cell = if (num == 0) .{ .not_clue = 0 } else .{ .clue = num };
+            cell.* = if (num == 0) .{ .not_clue = 0 } else .{ .clue = num };
         }
     }
     return state;
 }
 
 fn mvwDrawFullCharacter(window: *ncurses.WINDOW, y: u32, x: u32, num: u4) void {
-    const lines: [3]*const [5:0]u8 = switch (num) {
-        0 => .{ "     ", "     ", "     " },
-        1 => .{ " /|  ", "  |  ", "__|__" },
-        2 => .{ ",\"`\\ ", "   / ", "_<{__" },
-        3 => .{ ".-`-,", "  --{", "`-_-\"" },
-        4 => .{ "  /| ", " /_|_", "   | " },
-        5 => .{ "|\"\"\" ", "\"--. ", ".__/ " },
-        6 => .{ "/``+ ", "|--. ", "\\__/ " },
-        7 => .{ ":---o", "   / ", "  /  " },
-        8 => .{ "{```}", " }-{ ", "{___}" },
-        9 => .{ "/```\\", "'---|", ".___/" },
+    const lines: [3]*const [7:0]u8 = switch (num) {
+        0 => .{ "       ", "       ", "       " },
+        1 => .{ "  /|   ", "   |   ", " __|__ " },
+        2 => .{ " ,\"`\\  ", "    /  ", " _<{__ " },
+        3 => .{ " .-`-, ", "   --{ ", " `-_-\" " },
+        4 => .{ "  /|   ", " /_|_, ", "   |   " },
+        5 => .{ " |\"\"\"\" ", " \"---. ", " .___/ " },
+        6 => .{ " /```+ ", " |---. ", " \\___/ " },
+        7 => .{ " :---o ", "    /  ", "   /   " },
+        8 => .{ " {```} ", "  }-{  ", " {___} " },
+        9 => .{ " /```\\ ", " '---| ", " .___/ " },
         else => unreachable,
     };
     for (lines, 0..) |line, i| {
@@ -65,16 +65,16 @@ fn mvwDrawFullCharacter(window: *ncurses.WINDOW, y: u32, x: u32, num: u4) void {
     // `-_-"
 
     //  /|
-    // /_|_
+    // /_|_,
     //   |
 
-    // |"""
-    // "--.
-    // .__/
+    // |""""
+    // "---.
+    // .___/
 
-    // /``+
-    // |--.
-    // \__/
+    // /```+
+    // |---.
+    // \___/
 
     // :---o
     //    /
@@ -89,9 +89,22 @@ fn mvwDrawFullCharacter(window: *ncurses.WINDOW, y: u32, x: u32, num: u4) void {
     // .___/
 }
 
+// .{
+//     .{ 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+//     .{ 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+//     .{ 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+//     .{ 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+//     .{ 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+//     .{ 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+//     .{ 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+//     .{ 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+//     .{ 0, 0, 1, 0, 0, 0, 0, 0, 0 },
+// }
 pub fn play() void {
     _ = ncurses.clear();
     _ = ncurses.refresh();
+    _ = ncurses.init_pair(2, ncurses.COLOR_BLUE, ncurses.COLOR_BLACK);
+    _ = ncurses.init_pair(3, ncurses.COLOR_RED, ncurses.COLOR_BLACK);
     // var prng = std.rand.DefaultPrng.init(blk: {
     //     var seed: u64 = undefined;
     //     std.posix.getrandom(std.mem.asBytes(&seed)) catch unreachable;
@@ -99,20 +112,29 @@ pub fn play() void {
     // });
     // var rand = prng.random();
     var main_window: *ncurses.WINDOW = undefined;
+    // 73 columns+\n
     if (ncurses.LINES > 37 and ncurses.COLS > 74) {
         main_window = ncurses.newwin(37, 74, 0, 0).?;
+    } else {
+        return;
     }
     defer if (ncurses.delwin(main_window) == ncurses.ERR) std.debug.print("could not delete window", .{});
-    printFullGrid(main_window) catch return;
-    if (ncurses.wrefresh(main_window) == ncurses.ERR) unreachable;
-    var game = GameState{
-        .grid = .{.{Cell{ .not_clue = 0 }} ** 9} ** 9,
-        .row = 0,
-        .col = 0,
-    };
-    reverseCell(main_window, 1, 1, 3, 7);
-    if (ncurses.wrefresh(main_window) == ncurses.ERR) unreachable;
-    unreverseCell(main_window, 1 + 4 * @as(u32, game.row), 1 + 8 * @as(u32, game.col), 3, 7);
+    var game = iGameToGameState(.{
+        .{ 0, 0, 6, 0, 4, 0, 0, 0, 9 },
+        .{ 0, 0, 0, 0, 0, 9, 4, 0, 7 },
+        .{ 0, 0, 7, 0, 0, 1, 5, 0, 8 },
+        .{ 0, 0, 0, 0, 0, 3, 0, 0, 2 },
+        .{ 9, 0, 5, 0, 0, 0, 7, 0, 3 },
+        .{ 2, 0, 0, 5, 0, 0, 0, 0, 0 },
+        .{ 6, 0, 4, 8, 0, 0, 9, 0, 0 },
+        .{ 7, 0, 1, 9, 0, 0, 0, 0, 0 },
+        .{ 8, 0, 0, 0, 2, 0, 3, 0, 0 },
+    });
+    drawFullGrid(main_window) catch return;
+    drawAllCells(main_window, game);
+    drawFocusedCell(main_window, game);
+    assert(ncurses.wrefresh(main_window) == ncurses.OK);
+    mvwDrawCell(main_window, game, game.row, game.col);
     while (true) {
         const ch = ncurses.getch();
         game = if (switch (ch) {
@@ -140,23 +162,16 @@ pub fn play() void {
             error.InvalidMove => game,
         };
         // std.debug.print("{}", .{game.grid[game.row][game.col].not_clue});
-        mvwDrawCell(main_window, game, game.row, game.col);
-        reverseCell(main_window, 1 + 4 * @as(u32, game.row), 1 + 8 * @as(u32, game.col), 3, 7);
+        drawFocusedCell(main_window, game);
         if (ncurses.wrefresh(main_window) == ncurses.ERR) unreachable;
-        unreverseCell(main_window, 1 + 4 * @as(u32, game.row), 1 + 8 * @as(u32, game.col), 3, 7);
+        mvwDrawCell(main_window, game, game.row, game.col);
     }
 }
 
-fn unreverseCell(window: *ncurses.WINDOW, y: u32, x: u32, height: u32, width: u32) void {
-    for (y..y + height) |line| {
-        _ = ncurses.mvwchgat(window, @intCast(line), @intCast(x), @intCast(width), 0, 0, null);
-    }
-}
-
-fn reverseCell(window: *ncurses.WINDOW, y: u32, x: u32, height: u32, width: u32) void {
-    for (y..y + height) |line| {
-        _ = ncurses.mvwchgat(window, @intCast(line), @intCast(x), @intCast(width), ncurses.A_REVERSE, 0, null);
-    }
+fn drawFocusedCell(window: *ncurses.WINDOW, game: GameState) void {
+    assert(ncurses.wattron(window, ncurses.A_REVERSE) == ncurses.OK);
+    defer assert(ncurses.wattroff(window, ncurses.A_REVERSE) == ncurses.OK);
+    mvwDrawCell(window, game, game.row, game.col);
 }
 
 fn indexOfGretestBit(num: u9) u4 {
@@ -194,11 +209,13 @@ fn numToChar(num: u4) u8 {
 fn mvwDrawCell(window: *ncurses.WINDOW, game: GameState, row: u4, col: u4) void {
     switch (game.grid[row][col]) {
         .clue => |val| {
-            mvwDrawFullCharacter(window, 1 + 4 * @as(u32, row), 2 + 8 * @as(u32, col), val);
+            mvwDrawFullCharacter(window, 1 + 4 * @as(u32, row), 1 + 8 * @as(u32, col), val);
         },
         .not_clue => |val| {
+            _ = ncurses.wattron(window, ncurses.COLOR_PAIR(2));
+            defer _ = ncurses.wattroff(window, ncurses.COLOR_PAIR(2));
             if ((val & (val -% 1)) == 0) {
-                mvwDrawFullCharacter(window, 1 + 4 * @as(u32, row), 2 + 8 * @as(u32, col), indexOfGretestBit(val));
+                mvwDrawFullCharacter(window, 1 + 4 * @as(u32, row), 1 + 8 * @as(u32, col), indexOfGretestBit(val));
             } else {
                 const zeroToThree = [_]u4{ 0, 1, 2 };
                 for (zeroToThree) |i| {
@@ -210,15 +227,20 @@ fn mvwDrawCell(window: *ncurses.WINDOW, game: GameState, row: u4, col: u4) void 
                         _ = ncurses.waddch(window, ' ');
                     }
                 }
-                // _ = ncurses.mvwprintf(window, 1 + 4 * @as(i32, row), 1 + 8 * @as(i32, col), " %i %i %i ", 1, 2, 3);
-                // _ = ncurses.mvwprintf(window, 2 + 4 * @as(i32, row), 1 + 8 * @as(i32, col), " %i %i %i ", 4, 5, 6);
-                // _ = ncurses.mvwprintf(window, 3 + 4 * @as(i32, row), 1 + 8 * @as(i32, col), " %i %i %i ", 7, 8, 9);
             }
         },
     }
 }
 
-fn printFullGrid(window: *ncurses.WINDOW) !void {
+fn drawAllCells(window: *ncurses.WINDOW, game: GameState) void {
+    for (0..9) |row| {
+        for (0..9) |col| {
+            mvwDrawCell(window, game, @intCast(row), @intCast(col));
+        }
+    }
+}
+
+fn drawFullGrid(window: *ncurses.WINDOW) !void {
     return if (ncurses.mvwaddstr(window, 0, 0,
         \\┏━━━━━━━┯━━━━━━━┯━━━━━━━┳━━━━━━━┯━━━━━━━┯━━━━━━━┳━━━━━━━┯━━━━━━━┯━━━━━━━┓
         \\┃       │       │       ┃       │       │       ┃       │       │       ┃
