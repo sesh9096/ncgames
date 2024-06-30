@@ -18,6 +18,7 @@ pub fn main() !void {
     _ = ncurses.cbreak(); // intercept all keys immediately except for C-c and C-z, also see raw()
     _ = ncurses.curs_set(0); // hide cursor
     _ = ncurses.noecho(); // disable echoing input
+    _ = ncurses.start_color();
     _ = ncurses.keypad(ncurses.stdscr, true); // enable arrow keys
     const ItemData = struct {
         name: [*:0]const u8,
@@ -27,13 +28,16 @@ pub fn main() !void {
     const menu_options = [_]ItemData{
         ItemData{ .name = "2048", .description = "a 2048 game", .play = lib2048.play },
         ItemData{ .name = "suduko", .description = "regular suduko", .play = sudoku.play },
+        ItemData{ .name = "dino", .description = "chrome dinosaur game", .play = sudoku.play },
+        ItemData{ .name = "typer", .description = "improve your typing skills", .play = sudoku.play },
     };
-    var menu_items: [menu_options.len + 1]?*menu.ITEM = undefined;
+    var menu_items: [menu_options.len:null]?*menu.ITEM = undefined;
+    // even with the type, if initialized as undefined, the null pointer is not included, this may be a bug in zig 0.12
+    menu_items[menu_options.len] = null;
     for (menu_options, 0..) |option, i| {
         menu_items[i] = menu.new_item(option.name, option.description);
     }
-    menu_items[2] = null;
-    defer for (menu_items[0..menu_options.len]) |menu_item| {
+    defer for (menu_items) |menu_item| {
         _ = menu.free_item(menu_item);
     };
     // for (0..3) |i| {
