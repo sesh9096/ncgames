@@ -15,6 +15,24 @@ const Move = enum {
 const Cell = union(enum) {
     clue: u4,
     not_clue: u9,
+    fn singleValue(self: Cell) bool {
+        return switch (self) {
+            .clue => true,
+            .not_clue => |val| val != 0 and (val & (val -% 1)) == 0,
+        };
+    }
+    fn asMask(self: Cell) u9 {
+        return switch (self) {
+            .clue => |val| 1 << val,
+            .not_clue => |val| val,
+        };
+    }
+    fn asIndex(self: Cell) !u4 {
+        return switch (self) {
+            .clue => |val| val,
+            .not_clue => |val| if (singleValue()) indexOfGretestBit(val) else error.NotSingleValue,
+        };
+    }
 };
 
 const ImportGame = [9][9]u4;
@@ -23,6 +41,25 @@ const GameState = struct {
     grid: [9][9]Cell,
     row: u4,
     col: u4,
+    fn solved(game: GameState) bool {
+        // const zeroToNine = [_]u4{ 0, 1, 2, 3, 4, 5, 6, 7, 8 };
+        var rows: [9]u9 = .{0} ** 9;
+        var cols: [9]u9 = .{0} ** 9;
+        var boxes: [3][3]u9 = .{0} ** 9;
+        for (game.grid, 0..) |row, i| {
+            for (row, 0..) |cell, j| {
+                const val = cell.asMask();
+                if (!cell.singleValue()) return false;
+                if (rows[i] & val == 1) return false;
+                if (cols[j] & val == 1) return false;
+                if (boxes[i / 3][j / 3] & val == 1) return false;
+                rows[i] |= val;
+                cols[j] |= val;
+                boxes[i / 3][j / 3] |= val;
+            }
+        }
+        return true;
+    }
 };
 
 fn iGameToGameState(game: ImportGame) GameState {
@@ -103,7 +140,7 @@ fn mvwDrawFullCharacter(window: *ncurses.WINDOW, y: u32, x: u32, num: u4) void {
 pub fn play() void {
     _ = ncurses.clear();
     _ = ncurses.refresh();
-    _ = ncurses.init_pair(2, ncurses.COLOR_BLUE, ncurses.COLOR_BLACK);
+    _ = ncurses.init_pair(2, ncurses.COLOR_CYAN, ncurses.COLOR_BLACK);
     _ = ncurses.init_pair(3, ncurses.COLOR_RED, ncurses.COLOR_BLACK);
     // var prng = std.rand.DefaultPrng.init(blk: {
     //     var seed: u64 = undefined;
@@ -314,4 +351,21 @@ fn toggleCell(game: GameState, num: u4) !GameState {
         },
     }
     return new_game;
+}
+
+fn detectBadCells(game: GameState) [9][9]bool {
+    const Pair = struct { row: u4, col: u4 };
+    var rows: [9]?Pair = .{.{null} ** 9} ** 9;
+    var badCells: [9][9]bool = .{.{false} ** 9} ** 9;
+    for (game.grid, 0..) |row, i| {
+        for (row, 0..) |cell, j| {
+            const cellVal = cell.asIndex();
+            if (rows[cellVal] != null) {
+                badCells[rows[cellVal].?.row][rows[cellVal].?.col] = true;
+                badCells[i][j] = true;
+            } else {
+                rows[cellVal] = Pair{ .row = i, .col = j };
+            }
+        }
+    }
 }
