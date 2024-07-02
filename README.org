@@ -1,0 +1,4 @@
+#+title: NCGames
+#+author: Sean Shi
+
+A small collection of games written in the zig programming language using the ncurses library.
