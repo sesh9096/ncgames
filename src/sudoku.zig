@@ -30,10 +30,14 @@ const Cell = union(enum) {
     fn asIndex(self: Cell) !u4 {
         return switch (self) {
             .clue => |val| val,
-            .not_clue => |val| if (singleValue()) indexOfGretestBit(val) else error.NotSingleValue,
+            .not_clue => |val| if (isBitmaskWithOneOne(u9, val)) indexOfGretestBit(val) else error.NotSingleValue,
         };
     }
 };
+
+fn isBitmaskWithOneOne(T: type, val: T) bool {
+    return val != 0 and (val & (val -% 1)) == 0;
+}
 
 const ImportGame = [9][9]u4;
 
@@ -353,19 +357,72 @@ fn toggleCell(game: GameState, num: u4) !GameState {
     return new_game;
 }
 
+// fn range(comptime T: type, start: T, end: T) [end - start]T {
+//     var vals:[]T = undefined;
+//     return vals;
+// }
+/// returns a 2d array of bools indicating if there are conflicts in the gameState
+/// true means the cell is invalid, false means it is valid
+/// this function only checks cells which have only 1 value
 fn detectBadCells(game: GameState) [9][9]bool {
+    // iterate through the grid and keep track of the position of each digit in row, column, or box
+    // if overlap, mark the current cell and the stored cell
+    // otherwise, save the location of the cell.
     const Pair = struct { row: u4, col: u4 };
-    var rows: [9]?Pair = .{.{null} ** 9} ** 9;
-    var badCells: [9][9]bool = .{.{false} ** 9} ** 9;
+    var rows: [9][9]?Pair = .{.{null} ** 9} ** 9;
+    var cols: [9][9]?Pair = .{.{null} ** 9} ** 9;
+    var boxes: [3][3][9]?Pair = .{.{.{null} ** 9} ** 3} ** 3;
+    var bad_cells: [9][9]bool = .{.{false} ** 9} ** 9;
     for (game.grid, 0..) |row, i| {
         for (row, 0..) |cell, j| {
-            const cellVal = cell.asIndex();
-            if (rows[cellVal] != null) {
-                badCells[rows[cellVal].?.row][rows[cellVal].?.col] = true;
-                badCells[i][j] = true;
+            const cellVal = cell.asIndex() catch continue;
+            if (rows[i][cellVal] != null) {
+                bad_cells[rows[i][cellVal].?.row][rows[i][cellVal].?.col] = true;
+                bad_cells[i][j] = true;
             } else {
-                rows[cellVal] = Pair{ .row = i, .col = j };
+                rows[i][cellVal] = Pair{ .row = @intCast(i), .col = @intCast(j) };
+            }
+            if (cols[j][cellVal] != null) {
+                bad_cells[cols[j][cellVal].?.row][cols[j][cellVal].?.col] = true;
+                bad_cells[i][j] = true;
+            } else {
+                cols[j][cellVal] = Pair{ .row = @intCast(i), .col = @intCast(j) };
+            }
+            const box = &boxes[i / 3][j / 3][cellVal];
+            if (box.* != null) {
+                bad_cells[box.*.?.row][box.*.?.col] = true;
+                bad_cells[i][j] = true;
+            } else {
+                box.* = Pair{ .row = @intCast(i), .col = @intCast(j) };
             }
         }
     }
+    return bad_cells;
+}
+
+test "bad cells" {
+    const game = iGameToGameState(.{
+        .{ 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        .{ 0, 0, 0, 0, 0, 0, 0, 1, 4 },
+        .{ 0, 3, 0, 0, 2, 0, 0, 4, 0 },
+        .{ 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        .{ 0, 3, 0, 0, 1, 0, 0, 0, 0 },
+        .{ 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        .{ 0, 0, 5, 0, 0, 0, 0, 0, 5 },
+        .{ 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        .{ 0, 0, 1, 0, 0, 0, 0, 0, 0 },
+    });
+    const expected: [9][9]bool = .{
+        .{ false, false, false, false, false, false, false, false, false },
+        .{ false, false, false, false, false, false, false, false, true },
+        .{ false, true, false, false, false, false, false, true, false },
+        .{ false, false, false, false, false, false, false, false, false },
+        .{ false, true, false, false, false, false, false, false, false },
+        .{ false, false, false, false, false, false, false, false, false },
+        .{ false, false, true, false, false, false, false, false, true },
+        .{ false, false, false, false, false, false, false, false, false },
+        .{ false, false, false, false, false, false, false, false, false },
+    };
+    const actual = detectBadCells(game);
+    try testing.expectEqual(expected, actual);
 }
