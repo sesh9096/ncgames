@@ -1,6 +1,8 @@
 const std = @import("std");
 const lib2048 = @import("./lib2048.zig");
 const sudoku = @import("./sudoku.zig");
+const assert = std.debug.assert;
+
 const ncurses = @cImport({
     @cInclude("ncurses.h");
 });
@@ -11,8 +13,14 @@ const locale = @cImport({
     @cInclude("locale.h");
 });
 
+test {
+    _ = lib2048;
+}
+test {
+    _ = sudoku;
+}
 pub fn main() !void {
-    _ = locale.setlocale(locale.LC_ALL, "");
+    assert(locale.setlocale(locale.LC_ALL, "") != null);
     _ = ncurses.initscr(); // initialize main screen
     defer _ = ncurses.endwin(); // free main screen
     _ = ncurses.cbreak(); // intercept all keys immediately except for C-c and C-z, also see raw()
