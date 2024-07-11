@@ -123,10 +123,10 @@ fn move(state: GameState, direction: Move) MoveError!GameState {
                         continue;
                     } else if (cell == prev) {
                         new_arr.*[i] = prev + 1;
-                        prev = 0;
                         result.score += @as(u64, 1) << @as(u6, @intCast(prev + 1));
                         transition_array.*[prev_index] = i;
                         transition_array.*[index] = i;
+                        prev = 0;
                     } else if (prev == 0) {
                         prev = cell;
                         prev_index = @intCast(index);
@@ -161,10 +161,10 @@ fn move(state: GameState, direction: Move) MoveError!GameState {
                         continue;
                     } else if (cell == prev) {
                         new_arr.*[i] = prev + 1;
-                        prev = 0;
                         result.score += @as(u64, 1) << @as(u6, @intCast(prev + 1));
                         transition_array.*[prev_index] = i;
                         transition_array.*[index] = i;
+                        prev = 0;
                     } else if (prev == 0) {
                         prev = cell;
                         prev_index = index;
@@ -396,22 +396,22 @@ fn gridEq(a: [4][4]u8, b: [4][4]u8) bool {
     }
     return true;
 }
-fn checkState(before: GameState, expected: GameState, actual: GameState) !void {
-    try testing.expectEqual(expected.zeros, actual.zeros);
-    var zeros: u8 = 0;
-    for (0..expected.grid.len) |i| {
-        for (0..expected.grid[0].len) |j| {
-            try testing.expectEqual(expected.grid[i][j], actual.grid[i][j]);
-            if (before.grid[i][j] != 0) {
-                try testing.expectEqual(expected.transition[i][j], actual.transition[i][j]);
-            }
-            if (actual.grid[i][j] == 0) {
-                zeros += 1;
-            }
-        }
-    }
-    try testing.expectEqual(zeros, actual.zeros);
-}
+// fn checkState(before: GameState, expected: GameState, actual: GameState) !void {
+//     try testing.expectEqual(expected.zeros, actual.zeros);
+//     var zeros: u8 = 0;
+//     for (0..expected.grid.len) |i| {
+//         for (0..expected.grid[0].len) |j| {
+//             try testing.expectEqual(expected.grid[i][j], actual.grid[i][j]);
+//             if (before.grid[i][j] != 0) {
+//                 try testing.expectEqual(expected.transition[i][j], actual.transition[i][j]);
+//             }
+//             if (actual.grid[i][j] == 0) {
+//                 zeros += 1;
+//             }
+//         }
+//     }
+//     try testing.expectEqual(zeros, actual.zeros);
+// }
 
 test "zero" {
     const state = GameState{
@@ -420,6 +420,19 @@ test "zero" {
             [_]u8{ 0, 0, 0, 0 },
             [_]u8{ 0, 0, 0, 0 },
             [_]u8{ 0, 0, 0, 0 },
+        },
+        .zeros = 16,
+    };
+    const after = move(state, Move.left);
+    try testing.expectEqual(after, MoveError.InvalidMove);
+}
+test "invalid move" {
+    const state = GameState{
+        .grid = [4][4]u8{
+            [_]u8{ 1, 0, 0, 0 },
+            [_]u8{ 1, 0, 0, 0 },
+            [_]u8{ 1, 0, 0, 0 },
+            [_]u8{ 1, 0, 0, 0 },
         },
         .zeros = 16,
     };
@@ -451,11 +464,11 @@ test "simple left" {
             [_]u8{ u, u, u, u },
             [_]u8{ 0, u, u, 0 },
         },
+        .score = 4,
     };
-    const after = try move(before, Move.left);
-    try checkState(before, expected, after);
+    const actual = try move(before, Move.left);
+    try testing.expectEqual(actual, expected);
 }
-
 test "more complicated left" {
     const before = GameState{
         .grid = [4][4]u8{
@@ -481,12 +494,13 @@ test "more complicated left" {
             [_]u8{ 0, 1, 2, 3 },
             [_]u8{ u, 0, 1, 2 },
         },
+        .move = .left,
+        .score = 12,
     };
-    const after = try move(before, Move.left);
-    try checkState(before, expected, after);
+    const actual = try move(before, Move.left);
+    try testing.expectEqual(actual, expected);
     // try testing.expect(std.mem.eql([4][4]u8, after, expected));
 }
-
 test "simple right" {
     const before = GameState{
         .grid = [4][4]u8{
@@ -512,13 +526,14 @@ test "simple right" {
             [_]u8{ 2, u, 3, 3 },
         },
         .zeros = 12,
+        .score = 4,
+        .move = .right,
     };
-    const after = try move(before, Move.right);
+    const actual = try move(before, Move.right);
     // printGrid(after.grid);
     // printGrid(after.transition);
-    try checkState(before, expected, after);
+    try testing.expectEqual(actual, expected);
 }
-
 test "not so simple up" {
     const before = GameState{
         .grid = [4][4]u8{
@@ -544,18 +559,20 @@ test "not so simple up" {
             [_]u8{ 0, 1, 3, u },
         },
         .zeros = 9,
+        .score = 4,
+        .move = .up,
     };
-    const after = try move(before, Move.up);
+    const actual = try move(before, Move.up);
     // printGrid(after.transition);
-    try checkState(before, expected, after);
+    try testing.expectEqual(expected, actual);
 }
 test "down" {
     const before = GameState{
         .grid = [4][4]u8{
             [_]u8{ 0, 1, 1, 0 },
             [_]u8{ 1, 0, 2, 0 },
-            [_]u8{ 0, 1, 3, 0 },
-            [_]u8{ 0, 1, 4, 0 },
+            [_]u8{ 0, 3, 3, 0 },
+            [_]u8{ 0, 3, 4, 0 },
         },
         .zeros = 8,
     };
@@ -565,7 +582,7 @@ test "down" {
             [_]u8{ 0, 0, 1, 0 },
             [_]u8{ 0, 0, 2, 0 },
             [_]u8{ 0, 1, 3, 0 },
-            [_]u8{ 1, 2, 4, 0 },
+            [_]u8{ 1, 4, 4, 0 },
         },
         .transition = [4][4]u8{
             [_]u8{ u, 2, 0, u },
@@ -574,13 +591,13 @@ test "down" {
             [_]u8{ u, 3, 3, u },
         },
         .zeros = 9,
+        .score = 16,
+        .move = .down,
     };
-    const after = try move(before, Move.down);
-    try checkState(before, expected, after);
+    const actual = try move(before, Move.down);
+    try testing.expectEqual(expected, actual);
 }
-
-test "rand != rand" {
-    // sanity check
+test "rand != rand" { // sanity check
     var prng = std.rand.DefaultPrng.init(blk: {
         var seed: u64 = undefined;
         std.posix.getrandom(std.mem.asBytes(&seed)) catch unreachable;
