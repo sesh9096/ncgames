@@ -233,6 +233,7 @@ const GameState = struct {
 
 pub fn play() void {
     _ = ncurses.clear();
+    assert(ncurses.init_pair(2, ncurses.COLOR_WHITE, ncurses.COLOR_RED) == ncurses.OK);
     var prng = std.rand.DefaultPrng.init(blk: {
         var seed: u64 = undefined;
         std.posix.getrandom(std.mem.asBytes(&seed)) catch unreachable;
@@ -297,7 +298,9 @@ pub fn play() void {
             else => MoveError.InvalidMove,
         } catch state;
     }
-    _ = ncurses.mvprintw(0, 0, "You have lost \n");
+    assert(ncurses.attron(ncurses.COLOR_PAIR(2)) == ncurses.OK);
+    _ = ncurses.mvprintw(0, 0, "You have lost, final score:%u\n", state.score);
+    assert(ncurses.attroff(ncurses.COLOR_PAIR(2)) == ncurses.OK);
     _ = ncurses.getch();
 
     // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
