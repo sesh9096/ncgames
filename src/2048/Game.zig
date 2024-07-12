@@ -101,7 +101,7 @@ pub fn doAction(self: *Game, action: Action) ActionError!void {
         .down => self.turn(.down),
     }) |new_state| {
         while (self.current_node != self.history.last) {
-            _ = self.history.pop();
+            self.allocator.destroy(self.history.pop().?);
         }
         self.current_node = self.allocator.create(Node) catch {
             std.debug.print("Cannot Allocate Memory", .{});
@@ -564,4 +564,21 @@ test "rand != rand" { // sanity check
     var prng = std.rand.DefaultPrng.init(0);
     const rand = prng.random();
     try testing.expect(rand.int(u64) != rand.int(u64));
+}
+
+test "Memory Safety" {
+    const allocator = std.testing.allocator;
+    var prng = std.Random.DefaultPrng.init(0);
+    const rand = prng.random();
+    var game = Game.init(allocator, rand);
+    try game.doAction(.left);
+    try game.doAction(.right);
+    try game.doAction(.up);
+    try game.doAction(.down);
+    try game.doAction(.undo);
+    try game.doAction(.left);
+    try game.doAction(.undo);
+    try game.doAction(.redo);
+    try testing.expectError(error.NoNextNode, game.doAction(.redo));
+    game.deinit();
 }
