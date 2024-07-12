@@ -1,6 +1,6 @@
 const std = @import("std");
-const lib2048 = @import("./lib2048.zig");
-const sudoku = @import("./sudoku.zig");
+const lib2048 = @import("2048/ncdisplay.zig");
+const sudoku = @import("sudoku.zig");
 const assert = std.debug.assert;
 
 const ncurses = @cImport({

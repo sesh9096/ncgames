@@ -1,9 +1,30 @@
+const Game = @This();
 const std = @import("std");
 const testing = std.testing;
 const assert = std.debug.assert;
-const ncurses = @cImport({
-    @cInclude("ncurses.h");
-});
+const History = std.DoublyLinkedList(GameState);
+const Node = History.Node;
+
+state: GameState = .{
+    .grid = .{.{0} ** 4} ** 4,
+    .zeros = 16,
+    .score = 0,
+    .transition = .{.{0} ** 4} ** 4,
+    .prev_move = Move.left,
+},
+allocator: std.mem.Allocator,
+rand: std.Random,
+history: History,
+current_node: *History.Node,
+
+const Action = enum {
+    left,
+    down,
+    up,
+    right,
+    undo,
+    redo,
+};
 
 const Move = enum {
     left,
@@ -12,11 +33,101 @@ const Move = enum {
     right,
 };
 
+const ActionError = error{
+    InvalidMove,
+    NoPreviousNode,
+    NoNextNode,
+};
 const MoveError = error{
     InvalidMove,
 };
 
-const GameState = struct {
+pub fn deinit(self: *Game) void {
+    while (self.history.pop()) |node| {
+        self.allocator.destroy(node);
+    }
+}
+pub fn init(allocator: std.mem.Allocator, rand: std.Random) Game {
+    var game = Game{
+        .state = .{
+            .grid = .{.{0} ** 4} ** 4,
+            .zeros = 16,
+            .score = 0,
+            .transition = .{.{0} ** 4} ** 4,
+            .prev_move = .left,
+        },
+        .allocator = allocator,
+        .rand = rand,
+        .history = History{},
+        .current_node = undefined,
+    };
+    for (0..2) |_| {
+        game.state.addRandomDigit(rand);
+    }
+    var current_node = allocator.create(Node) catch {
+        std.debug.print("Cannot Allocate Memory", .{});
+        unreachable;
+    };
+    game.current_node = current_node;
+    current_node.data = game.state;
+    game.history.append(current_node);
+    return game;
+}
+
+pub fn doAction(self: *Game, action: Action) ActionError!void {
+    // var game: [4][4]u8 = .{.{0} ** 4} ** 4;
+    if (switch (action) {
+        .undo => {
+            if (self.current_node.prev) |prev| {
+                self.current_node = prev;
+                self.state = prev.data;
+            } else {
+                return error.NoPreviousNode;
+            }
+            return;
+        },
+        .redo => {
+            if (self.current_node.next) |next| {
+                self.current_node = next;
+                self.state = next.data;
+            } else {
+                return error.NoNextNode;
+            }
+            return;
+        },
+        .left => self.turn(.left),
+        .right => self.turn(.right),
+        .up => self.turn(.up),
+        .down => self.turn(.down),
+    }) |new_state| {
+        while (self.current_node != self.history.last) {
+            _ = self.history.pop();
+        }
+        self.current_node = self.allocator.create(Node) catch {
+            std.debug.print("Cannot Allocate Memory", .{});
+            return;
+        };
+        self.current_node.data = new_state;
+        self.history.append(self.current_node);
+        self.state = new_state;
+    } else |err| {
+        switch (err) {
+            error.InvalidMove => {},
+        }
+    }
+}
+
+fn turn(self: Game, direction: Move) MoveError!GameState {
+    var new_state = try self.state.move(direction);
+    new_state.addRandomDigit(self.rand);
+    return new_state;
+}
+
+pub fn gameOver(self: Game) bool {
+    return self.state.gameOver();
+}
+
+pub const GameState = struct {
     grid: [4][4]u8,
     transition: [4][4]u8 = undefined,
     score: u64 = 0,
@@ -205,12 +316,6 @@ const GameState = struct {
         return result;
     }
 
-    fn turn(state: GameState, direction: Move, rand: std.Random) MoveError!GameState {
-        var new_state = try move(state, direction);
-        new_state.addRandomDigit(rand);
-        return new_state;
-    }
-
     fn gameOver(state: GameState) bool {
         const grid = state.grid;
         if (state.zeros > 0) {
@@ -230,128 +335,6 @@ const GameState = struct {
         }
     }
 };
-
-pub fn play() void {
-    _ = ncurses.clear();
-    _ = ncurses.refresh();
-    assert(ncurses.init_pair(2, ncurses.COLOR_WHITE, ncurses.COLOR_RED) == ncurses.OK);
-    var prng = std.rand.DefaultPrng.init(blk: {
-        var seed: u64 = undefined;
-        std.posix.getrandom(std.mem.asBytes(&seed)) catch unreachable;
-        break :blk seed;
-    });
-    const rand = prng.random();
-    const cell_width = 10;
-    const cell_height = 5;
-    const allocator = std.heap.c_allocator;
-    const main_window = ncurses.newwin(cell_height * 4 + 1, cell_width * 4 + 1, 1, 0).?;
-    const score_window = ncurses.newwin(1, ncurses.COLS, 0, 0).?;
-    const echo_window = ncurses.newwin(1, ncurses.COLS, cell_height * 4 + 2, 0).?;
-    // var game: [4][4]u8 = .{.{0} ** 4} ** 4;
-    var state = GameState{
-        .grid = .{.{0} ** 4} ** 4,
-        .zeros = 16,
-        .score = 0,
-        .transition = .{.{0} ** 4} ** 4,
-        .prev_move = Move.left,
-    };
-    for (0..2) |_| {
-        state.addRandomDigit(rand);
-    }
-    const L = std.DoublyLinkedList(GameState);
-    const Node = L.Node;
-    var history = L{};
-    defer while (history.pop()) |node| {
-        allocator.destroy(node);
-    };
-    var current_node = allocator.create(Node) catch {
-        std.debug.print("Cannot Allocate Memory", .{});
-        return;
-    };
-    current_node.data = state;
-    history.append(current_node);
-    printState(cell_width, cell_height, main_window, score_window, state, history.len);
-    while (!state.gameOver()) {
-        const ch = ncurses.getch();
-        _ = ncurses.wrefresh(echo_window);
-        if (switch (ch) {
-            'h', ncurses.KEY_LEFT => state.turn(.left, rand),
-            'j', ncurses.KEY_DOWN => state.turn(.down, rand),
-            'k', ncurses.KEY_UP => state.turn(.up, rand),
-            'l', ncurses.KEY_RIGHT => state.turn(.right, rand),
-            'u' => {
-                if (current_node.prev) |prev| {
-                    current_node = prev;
-                    state = prev.data;
-                    printState(cell_width, cell_height, main_window, score_window, state, history.len);
-                } else {
-                    assert(ncurses.wattron(echo_window, ncurses.COLOR_PAIR(2)) == ncurses.OK);
-                    _ = ncurses.mvwprintw(echo_window, 0, 0, "No previous history");
-                    assert(ncurses.wattroff(echo_window, ncurses.COLOR_PAIR(2)) == ncurses.OK);
-                    _ = ncurses.wrefresh(echo_window);
-                    _ = ncurses.wclear(echo_window);
-                }
-                continue;
-            },
-            'r' => {
-                if (current_node.next) |next| {
-                    current_node = next;
-                    state = next.data;
-                    printState(cell_width, cell_height, main_window, score_window, state, history.len);
-                } else {
-                    assert(ncurses.wattron(echo_window, ncurses.COLOR_PAIR(2)) == ncurses.OK);
-                    _ = ncurses.mvwprintw(echo_window, 0, 0, "No next history");
-                    assert(ncurses.wattroff(echo_window, ncurses.COLOR_PAIR(2)) == ncurses.OK);
-                    _ = ncurses.wrefresh(echo_window);
-                    _ = ncurses.wclear(echo_window);
-                }
-                continue;
-            },
-            'q' => return,
-            else => MoveError.InvalidMove,
-        }) |new_state| {
-            while (current_node != history.last) {
-                _ = history.pop();
-            }
-            current_node = allocator.create(Node) catch {
-                std.debug.print("Cannot Allocate Memory", .{});
-                return;
-            };
-            current_node.data = new_state;
-            history.append(current_node);
-            state = new_state;
-        } else |err| {
-            switch (err) {
-                error.InvalidMove => {
-                    assert(ncurses.wattron(echo_window, ncurses.COLOR_PAIR(2)) == ncurses.OK);
-                    _ = ncurses.mvwprintw(echo_window, 0, 0, "Invalid Move");
-                    assert(ncurses.wattroff(echo_window, ncurses.COLOR_PAIR(2)) == ncurses.OK);
-                    _ = ncurses.wrefresh(echo_window);
-                    _ = ncurses.wclear(echo_window);
-                },
-            }
-        }
-        printState(cell_width, cell_height, main_window, score_window, state, history.len);
-    }
-    assert(ncurses.wattron(echo_window, ncurses.COLOR_PAIR(2)) == ncurses.OK);
-    _ = ncurses.mvwprintw(echo_window, 0, 0, "You have lost, final score:%u\n", state.score);
-    assert(ncurses.wattroff(echo_window, ncurses.COLOR_PAIR(2)) == ncurses.OK);
-    printState(cell_width, cell_height, main_window, score_window, state, history.len);
-    _ = ncurses.wrefresh(echo_window);
-    _ = ncurses.getch();
-
-    // ╭────────╮
-    // │        │
-    // │  2048  │
-    // │        │
-    // ╰────────╯
-    // ┌────┬────┐
-    // │    │    │
-    // ├────┼────┤
-    // │    │    │
-    // └────┴────┘
-
-}
 
 test "game over" {
     const game1 = GameState{
@@ -384,45 +367,6 @@ test "game over" {
     try testing.expect(!game1.gameOver());
     try testing.expect(!game2.gameOver());
     try testing.expect(game3.gameOver());
-}
-
-fn printState(comptime cell_width: usize, comptime cell_height: usize, main_window: *ncurses.WINDOW, score_window: *ncurses.WINDOW, state: GameState, moves: usize) void {
-    for (state.grid, 0..) |row, i| {
-        for (row, 0..) |cell, j| {
-            const printed_value = @as(u64, 1) << @as(u6, @intCast(cell));
-            if (printed_value != 1) {
-                printCell(main_window, @intCast(i * cell_height), @intCast(j * cell_width), printed_value);
-            } else {
-                printEmptyCell(main_window, @intCast(i * cell_height), @intCast(j * cell_width));
-            }
-        }
-    }
-    _ = ncurses.wclear(score_window);
-    assert(ncurses.mvwprintw(score_window, 0, 0, "Score: %u, moves: %u", state.score, moves) == ncurses.OK);
-    _ = ncurses.wrefresh(main_window);
-    _ = ncurses.wrefresh(score_window);
-}
-fn printCell(window: *ncurses.WINDOW, y: c_int, x: c_int, n: u64) void {
-    _ = ncurses.mvwprintw(window, y + 0, x, "╭────────╮");
-    _ = ncurses.mvwprintw(window, y + 1, x, "│        │");
-    _ = ncurses.mvwprintw(window, y + 2, x, "│  %4u  │", n);
-    _ = ncurses.mvwprintw(window, y + 3, x, "│        │");
-    _ = ncurses.mvwprintw(window, y + 4, x, "╰────────╯");
-}
-
-pub fn printEmptyCell(window: *ncurses.WINDOW, y: c_int, x: c_int) void {
-    inline for (0..5) |i| {
-        _ = ncurses.mvwaddstr(window, y + @as(c_int, i), x, " " ** 10);
-    }
-}
-
-fn printGrid(grid: [4][4]u8) void {
-    for (grid) |arr| {
-        for (arr) |val| {
-            std.debug.print("{} ", .{val});
-        }
-        std.debug.print("\n", .{});
-    }
 }
 
 fn gridEq(a: [4][4]u8, b: [4][4]u8) bool {
